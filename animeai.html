@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Indian Anime AI</title>
+
+<style>
+body{
+  margin:0;
+  overflow:hidden;
+  font-family:sans-serif;
+}
+
+#bg{
+  position:fixed;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  z-index:-1;
+}
+
+/* Talking animation */
+.talking{
+  animation: talk 0.3s infinite alternate;
+}
+@keyframes talk{
+  from{ transform: scale(1); }
+  to{ transform: scale(1.03); }
+}
+
+.overlay{
+  position:fixed;
+  width:100%;
+  height:100%;
+  background:rgba(0,0,0,0.3);
+}
+
+#chat{
+  position:absolute;
+  bottom:120px;
+  width:100%;
+  max-height:40%;
+  overflow:auto;
+  color:white;
+  padding:10px;
+}
+
+.user{text-align:right;}
+.ai{text-align:left;}
+
+.inputBox{
+  position:absolute;
+  bottom:0;
+  width:100%;
+  display:flex;
+}
+
+input{
+  flex:1;
+  padding:15px;
+  border:none;
+}
+
+button{
+  padding:15px;
+  border:none;
+  background:#ff4081;
+  color:white;
+}
+
+/* MIC GREEN */
+.mic-on{
+  background:#00e676 !important;
+}
+
+/* Voice selector */
+#voiceSelect{
+  position:absolute;
+  bottom:60px;
+  left:10px;
+  padding:10px;
+}
+</style>
+</head>
+
+<body>
+
+<img id="bg" src="anime-girl.png">
+<div class="overlay"></div>
+
+<!-- Voice Selector -->
+<select id="voiceSelect">
+  <option value="EXAVITQu4vr4xnSDxMaL">💖 Cute (Bella)</option>
+  <option value="21m00Tcm4TlvDq8ikWAM">😏 Soft (Rachel)</option>
+  <option value="AZnzlk1XvdvUeBnXmlld">😢 Sad (Dorothy)</option>
+</select>
+
+<div id="chat"></div>
+
+<div class="inputBox">
+  <input id="msg" placeholder="Talk to me...">
+  <button onclick="send()">Send</button>
+  <button id="micBtn" onclick="toggleMic()">🎤</button>
+</div>
+
+<script>
+
+// ===== MEMORY =====
+let memory = localStorage.getItem("userName") || "";
+
+// ===== VOICES =====
+let voices = {
+  cute: "EXAVITQu4vr4xnSDxMaL",
+  sad: "AZnzlk1XvdvUeBnXmlld",
+  angry: "21m00Tcm4TlvDq8ikWAM"
+};
+
+let currentVoice = document.getElementById("voiceSelect").value;
+
+// Dropdown change
+document.getElementById("voiceSelect").addEventListener("change", function(){
+  currentVoice = this.value;
+});
+
+// ===== PROMPT (INDIAN STYLE) =====
+function getPrompt(){
+  return "Tum ek cute Indian anime girl ho. Hinglish me baat karo. Tone soft, friendly aur playful ho. User ka naam hai: " + memory + ". Use naam se bulao.";
+}
+
+// ===== SEND =====
+async function send(){
+  let input = document.getElementById("msg");
+  let msg = input.value.trim();
+  if(!msg) return;
+
+  document.getElementById("chat").innerHTML += "<div class='user'>"+msg+"</div>";
+  input.value = "";
+
+  // Save name
+  if(msg.toLowerCase().includes("mera naam")){
+    memory = msg.split(" ").pop();
+    localStorage.setItem("userName", memory);
+  }
+
+  // Hinglish hint
+  msg = msg + " (reply in Hinglish Indian style)";
+
+  try{
+    let res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "Authorization":"Bearer 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",
+        "HTTP-Referer":"https://example.com",
+        "X-Title":"AnimeAI"
+      },
+      body:JSON.stringify({
+        model:"openai/gpt-4o-mini",
+        messages:[
+          {role:"system", content:getPrompt()},
+          {role:"user", content:msg}
+        ]
+      })
+    });
+
+    let data = await res.json();
+
+    if(!data.choices){
+      addAI("❌ API Error");
+      return;
+    }
+
+    let reply = data.choices[0].message.content;
+    addAI(reply);
+
+    speak(reply);
+
+  }catch(e){
+    addAI("❌ Network error");
+  }
+}
+
+// ===== ADD AI =====
+function addAI(text){
+  document.getElementById("chat").innerHTML += "<div class='ai'>"+text+"</div>";
+}
+
+// ===== MOOD DETECT =====
+function detectMood(text){
+  text = text.toLowerCase();
+
+  if(text.includes("sad") || text.includes("alone") || text.includes("cry"))
+    return "sad";
+
+  if(text.includes("angry") || text.includes("hate") || text.includes("fight"))
+    return "angry";
+
+  return "cute";
+}
+
+// ===== SPEAK =====
+async function speak(text){
+
+  let img = document.getElementById("bg");
+
+  let mood = detectMood(text);
+
+  // Auto mood ya manual voice
+  let voiceId = currentVoice || voices[mood];
+
+  img.classList.add("talking");
+
+  try{
+    let res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method:"POST",
+      headers:{
+        "xi-api-key":"sk_9babe2e661b6d75156c99d4b4d20fdd1ca4e3f35399f62ec",
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+        text:text,
+        voice_settings:{
+          stability:0.4,
+          similarity_boost:1,
+          style:1,
+          use_speaker_boost:true
+        }
+      })
+    });
+
+    let audioBlob = await res.blob();
+    let audioUrl = URL.createObjectURL(audioBlob);
+
+    let audio = new Audio(audioUrl);
+    audio.play();
+
+    audio.onended = ()=> img.classList.remove("talking");
+
+  }catch(e){
+    img.classList.remove("talking");
+  }
+}
+
+// ===== MIC =====
+let recognition;
+let micActive = false;
+
+function toggleMic(){
+  let btn = document.getElementById("micBtn");
+
+  if(!micActive){
+    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = "en-IN";
+
+    recognition.start();
+    micActive = true;
+    btn.classList.add("mic-on");
+
+    recognition.onresult = function(e){
+      let text = e.results[0][0].transcript;
+      document.getElementById("msg").value = text;
+      send();
+    };
+
+    recognition.onend = function(){
+      micActive = false;
+      btn.classList.remove("mic-on");
+    };
+
+  } else {
+    recognition.stop();
+    micActive = false;
+    btn.classList.remove("mic-on");
+  }
+}
+
+</script>
+
+</body>
+</html>
